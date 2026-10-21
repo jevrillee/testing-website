@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roastery Hub</title>
+<style>
+:root{--bg:#faf6f1;--card:#fff;--ink:#2b1d14;--mut:#7a6a5d;--line:#e6dccf;--acc:#8a4b24;--accink:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1511;--card:#271d17;--ink:#f3e9df;--mut:#b09c8c;--line:#3b2d24;--acc:#d08a55;--accink:#1c1511;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1c1511;--card:#271d17;--ink:#f3e9df;--mut:#b09c8c;--line:#3b2d24;--acc:#d08a55;--accink:#1c1511;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 12px}
+nav{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+nav button{flex:1 1 28%;padding:10px 4px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;font-size:14px}
+nav button.on{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{display:block;font-size:12px;color:var(--mut)}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;margin-top:2px}
+.full{grid-column:1/-1}
+.go{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;background:var(--acc);color:var(--accink);font-weight:600;font-size:16px}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.t{font-weight:600}.m{color:var(--mut);font-size:13px}
+.pill{border:1px solid var(--acc);color:var(--acc);background:none;border-radius:99px;padding:4px 10px;font-size:13px}
+.x{border:0;background:none;color:var(--mut);font-size:13px;padding:4px}
+#msg{color:var(--mut);font-size:13px;margin:0 0 10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>☕ Roastery Hub</h1>
+<p id="msg">Connecting…</p>
+<nav id="nav"></nav>
+<div class="card" id="form"></div>
+<div id="list"></div>
+</div>
+<script>
+var STATUS=["New","Roasting","Packed","Shipped","Paid"];
+var TABS={
+ orders:{label:"Orders",title:"New sales order"},
+ roasts:{label:"Roasts",title:"Log a roast"},
+ cups:{label:"Cupping",title:"Cupping notes"},
+ inventory:{label:"Inventory",title:"Manage inventory"},
+ stockouts:{label:"Stock Out",title:"Record stock out"}
+};
+var state={orders:[],roasts:[],cups:[],inventory:[],stockouts:[]},tab="orders",db=null;
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function msg(t){document.getElementById("msg").textContent=t}
+function today(){return new Date().toISOString().slice(0,10)}
+function nav(){var h="";Object.keys(TABS).forEach(function(k){h+='<button data-t="'+k+'" class="'+(k===tab?"on":"")+'">'+TABS[k].label+"</button>"});var n=document.getElementById("nav");n.innerHTML=h;n.querySelectorAll("button").forEach(function(b){b.onclick=function(){tab=b.dataset.t;nav();form();list()}})}
+function roastLabel(r){return [r.coffee,r.date,r.roaster].filter(Boolean).join(" · ")||"Roast"}
+function options(list, labelFn, empty){return '<option value="">'+(empty||"— choose —")+'</option>'+list.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(labelFn(x))+'</option>'}).join("")}
+function form(){
+ var h="";
+ if(tab==="orders"){
+  h='<div class="t">New sales order</div><div class="grid">'+
+  field("orderDate","Order date","date")+field("channel","Channel","select",["Shopee","WhatsApp / phone","Roastery book (wholesale)","Email","Other"])+
+  field("customer","Customer","text")+field("ref","Order no.","text")+
+  '<div class="full"><div class="row"><div class="t">Beans</div><button type="button" class="pill" id="addBean">+ Add beans line</button></div><div id="beanLines"></div></div>'+
+  field("batchId","Roast batch used","select",state.roasts.map(function(r){return r.id+"|"+roastLabel(r)}),"full")+
+  field("courier","Courier","text")+field("tracking","Courier ref. no.","text")+field("shipName","Ship to: name","text")+field("shipPhone","Ship to: phone","text")+field("shipAddress","Ship to: address","text","full")+field("notes","Notes","textarea","full")+'</div>';
+ }else if(tab==="roasts"){
+  h='<div class="t">Log a roast</div><div class="grid">'+field("date","Roast date","date")+field("roaster","Roaster","select",["P5","P12"])+field("coffee","Beans","text","full")+
+  field("amb","Ambient temp (°C)","number")+field("hum","Humidity (%)","number")+field("inKg","Input weight (kg)","number")+field("outKg","Output weight (kg)","number")+field("tp","Turning point (min:sec)","text")+field("tpT","Turning point temp (°C)","number")+field("fc","First crack (min:sec)","text")+field("fcT","First crack temp (°C)","number")+field("drop","Ending time (min:sec)","text")+field("dropT","Ending temp (°C)","number")+field("agtron","Agtron bean / ground","text","full")+field("notes","Notes","textarea","full")+'</div>';
+ }else if(tab==="cups"){
+  h='<div class="t">Cupping notes</div><div class="grid">'+field("coffee","Beans / roast batch","select",state.roasts.map(function(r){return r.id+"|"+roastLabel(r)}),"full")+field("cupNumber","Cup number","text")+field("date","Cupping Date","date")+field("dryAroma","Dry Aroma","textarea","full")+field("wetAroma","Wet Aroma","textarea","full")+field("acidity","Acidity","textarea","full")+field("body","Body","textarea","full")+field("notes","Cupping notes","textarea","full")+'</div>';
+ }else if(tab==="inventory"){
+  h='<div class="t">Add inventory item</div><div class="grid">'+field("section","Section","select",["Green beans","Roasted beans","Packaging"])+field("item","Item / bean / packaging name","text","full")+field("unit","Unit","select",["g","kg","pcs","bags"])+field("quantity","Opening quantity","number")+field("notes","Notes","textarea","full")+'</div>';
+ }else{
+  h='<div class="t">Record stock out</div><div class="grid">'+field("date","Date","date")+field("itemId","Inventory item","select",state.inventory.map(function(i){return i.id+"|"+i.section+" — "+i.item+" ("+i.unit+")"}),"full")+field("quantity","Quantity out","number")+field("reason","Reason / order reference","text","full")+field("notes","Notes","textarea","full")+'</div>';
+ }
+ h+='<button class="go" id="save">Save</button>';document.getElementById("form").innerHTML=h;
+ document.querySelectorAll("#form [data-k]").forEach(function(e){if(e.type==="date")e.value=today()});
+ if(tab==="orders"){addBeanLine();document.getElementById("addBean").onclick=addBeanLine;}
+ var batch=document.querySelector('#form [data-k="batchId"]');
+ if(batch)batch.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");
+ var cup=document.querySelector('#form [data-k="coffee"]');
+ if(tab==="cups"&&cup){cup.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");}
+ var inv=document.querySelector('#form [data-k="itemId"]');
+ if(inv)inv.innerHTML=options(state.inventory,function(i){return i.section+" — "+i.item+" ("+i.unit+")"},"— choose inventory item —");
+ var sel=document.querySelector('#form [data-k="section"]');if(sel)sel.value="Green beans";
+ document.getElementById("save").onclick=save;
+}
+function field(k,label,type,opts,wide){
+ var cls=wide==="full"||type==="textarea"?"full":"";
+ var input=type==="select"?'<select data-k="'+k+'">'+(opts||[]).map(function(x){var v=x.indexOf("|")>=0?x.split("|")[0]:x,t=x.indexOf("|")>=0?x.substring(x.indexOf("|")+1):x;return '<option value="'+esc(v)+'">'+esc(t)+'</option>'}).join("")+'</select>':
+ type==="textarea"?'<textarea rows="3" data-k="'+k+'"></textarea>':'<input data-k="'+k+'" type="'+type+'"'+(type==="number"?' step="any" inputmode="decimal"':"")+'>';
+ return '<label class="'+cls+'">'+label+input+'</label>';
+}
+function addBeanLine(){
+ var box=document.getElementById("beanLines");if(!box)return;
+ var div=document.createElement("div");div.className="card bean-line";
+ div.innerHTML='<div class="grid">'+
+ '<label class="full">Beans<input data-line="bean" type="text" placeholder="Bean name"></label>'+
+ '<label>Packaging<select data-line="pack"><option>100g</option><option>150g</option><option>500g</option><option>1kg</option></select></label>'+
+ '<label>Quantity<input data-line="qty" type="number" min="1" step="1" value="1"></label>'+
+ '<label class="full">Roast date<select data-line="roast">'+options(state.roasts,roastLabel,"— choose roast date / batch —")+'</select></label>'+
+ '<button type="button" class="x remove-line">Remove line</button></div>';
+ div.querySelector(".remove-line").onclick=function(){div.remove()};box.appendChild(div);
+}
+function save(){
+ if(!db)return;
+ var d={created:Date.now()},any=false;
+ document.querySelectorAll("#form [data-k]").forEach(function(e){var v=e.value;if(e.type==="number"&&v!=="")v=Number(v);d[e.dataset.k]=v;if(v!==""&&e.type!=="date"&&e.tagName!=="SELECT")any=true});
+ if(tab==="orders"){
+  d.beansLines=Array.from(document.querySelectorAll(".bean-line")).map(function(x){return {bean:x.querySelector('[data-line="bean"]').value,packaging:x.querySelector('[data-line="pack"]').value,quantity:Number(x.querySelector('[data-line="qty"]').value)||1,roastId:x.querySelector('[data-line="roast"]').value}}).filter(function(x){return x.bean.trim()});
+  if(!d.beansLines.length){msg("Please add at least one Beans line.");return}
+  d.status="New";d.batchId=d.batchId||"";
+ }else if(tab==="cups"){
+  var r=state.roasts.filter(function(x){return x.id===d.coffee})[0];d.roastId=d.coffee;d.roastLabel=r?roastLabel(r):"";d.coffee=r?r.coffee:"";
+ }else if(tab==="stockouts"){
+  if(!(Number(d.quantity)>0)){msg("Enter a stock-out quantity greater than zero.");return}
+  var inv=state.inventory.filter(function(x){return x.id===d.itemId})[0];if(!inv){msg("Choose an inventory item.");return}
+  d.itemLabel=inv.section+" — "+inv.item;d.unit=inv.unit;
+ }
+ if(!any&&tab!=="orders"){return}
+ db.collection(tab).add(d).then(function(){form();list();msg("Saved — shared with your team.")},function(e){msg("Could not save: "+(e&&e.message||"error"))});
+}
+function line(a){return a.filter(function(x){return x!==""&&x!=null}).map(esc).join(" · ")}
+function list(){
+ var h="",items=state[tab];
+ if(tab==="inventory"){
+  ["Green beans","Roasted beans","Packaging"].forEach(function(sec){
+   h+='<div class="card"><div class="t">'+sec+'</div>';
+   var its=state.inventory.filter(function(i){return i.section===sec});
+   if(!its.length)h+='<p class="m">No items yet.</p>';
+   its.forEach(function(i){var outs=state.stockouts.filter(function(s){return s.itemId===i.id}).reduce(function(a,s){return a+(Number(s.quantity)||0)},0);h+='<div class="card"><div class="t">'+esc(i.item)+'</div><div class="m">Opening: '+esc(i.quantity)+' '+esc(i.unit)+' · Stock out: '+outs+' '+esc(i.unit)+' · Available: '+((Number(i.quantity)||0)-outs)+' '+esc(i.unit)+'</div>'+(i.notes?'<div class="m">'+esc(i.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+i.id+'">Delete</button></div>'});
+   h+='</div>';
+  });
+ }else if(!items.length)h='<p class="m">Nothing logged yet.</p>';
+ items.forEach(function(r){
+  if(tab==="orders"){
+   var beans=(r.beansLines||[]).map(function(b){return [b.bean,b.packaging,b.quantity+" unit(s)",(state.roasts.filter(function(x){return x.id===b.roastId})[0]||{}).date].filter(Boolean).join(" · ")}).join("<br>");
+   h+='<div class="card"><div class="row"><div><div class="t">'+esc(r.customer||"Customer")+'</div><div class="m">'+line([r.channel,r.orderDate,r.ref?"#"+r.ref:""])+'</div></div><button class="pill" data-a="next" data-id="'+r.id+'">'+esc(r.status||"New")+' ›</button></div><div class="m">'+beans+'</div>'+(r.courier||r.tracking||r.shipName||r.shipAddress?'<div class="m">'+line([r.courier,r.tracking,r.shipName,r.shipPhone,r.shipAddress])+'</div>':'')+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+  }else if(tab==="roasts"){
+   var loss=r.inKg>0&&r.outKg>0?((r.inKg-r.outKg)/r.inKg*100).toFixed(1)+"% loss":"";
+   h+='<div class="card"><div class="t">'+esc(r.coffee||"Roast")+'</div><div class="m">'+line([r.date,r.roaster,r.inKg+" → "+r.outKg+" kg",loss,"Batch: "+r.id])+'</div>'+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+  }else if(tab==="cups"){
+   h+='<div class="card"><div class="t">'+esc(r.roastLabel||r.coffee||"Cupping")+'</div><div class="m">'+line(["Cupping Date: "+(r.date||""),"Cup number: "+(r.cupNumber||"")])+'</div>'+["dryAroma","wetAroma","acidity","body","notes"].map(function(k){return r[k]?'<div class="m"><b>'+({dryAroma:"Dry Aroma",wetAroma:"Wet Aroma",acidity:"Acidity",body:"Body",notes:"Cupping notes"}[k])+':</b> '+esc(r[k])+'</div>':''}).join("")+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+  }else if(tab==="stockouts"){
+   h+='<div class="card"><div class="t">'+esc(r.itemLabel||"Stock out")+'</div><div class="m">'+line([r.date,r.quantity+" "+(r.unit||""),r.reason])+'</div>'+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+  }
+ });
+ var L=document.getElementById("list");L.innerHTML=h;
+ L.querySelectorAll("button[data-a]").forEach(function(b){b.onclick=function(){if(!db)return;var a=b.dataset.a,id=b.dataset.id;if(a==="del"){if(confirm("Delete this entry?"))db.doc(tab+"/"+id).delete()}else{var cur=items.filter(function(x){return x.id===id})[0];var i=STATUS.indexOf(cur.status||"New");db.doc(tab+"/"+id).update({status:STATUS[(i+1)%STATUS.length]})}}});
+}
+nav();form();list();
+claude.use("db").then(function(d){db=d;if(!db){msg("Sign in to the artifact to load and save shared data.");return}msg("Shared with your team — changes appear live.");Object.keys(TABS).forEach(function(n){db.collection(n).orderBy("created","desc").onSnapshot(function(s){state[n]=s.docs.map(function(x){var o=x.data();o.id=x.id;return o});list();if(["orders","cups","stockouts"].indexOf(tab)>=0)form()},function(e){msg("Data error: "+(e&&e.code||"unknown"))})})},function(){msg("Shared data is unavailable here.")});
+</script>
+</body>
+</html>
