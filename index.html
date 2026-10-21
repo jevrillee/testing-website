@@ -37,22 +37,26 @@ input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border
 <div class="card" id="form"></div>
 <div id="list"></div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./config.js"></script>
 <script>
 var STATUS=["New","Roasting","Packed","Shipped","Paid"];
 var TABS={
- orders:{label:"Orders",title:"New sales order"},
- roasts:{label:"Roasts",title:"Log a roast"},
- cups:{label:"Cupping",title:"Cupping notes"},
- inventory:{label:"Inventory",title:"Manage inventory"},
- stockouts:{label:"Stock Out",title:"Record stock out"}
+ orders:{label:"Orders",title:"New sales order",table:"orders"},
+ roasts:{label:"Roasts",title:"Log a roast",table:"roasts"},
+ cups:{label:"Cupping",title:"Cupping notes",table:"cupping_notes"},
+ inventory:{label:"Inventory",title:"Manage inventory",table:"inventory_items"},
+ stockouts:{label:"Stock Out",title:"Record stock out",table:"stock_outs"}
 };
 var state={orders:[],roasts:[],cups:[],inventory:[],stockouts:[]},tab="orders",db=null;
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function msg(t){document.getElementById("msg").textContent=t}
 function today(){return new Date().toISOString().slice(0,10)}
+function idNum(v){if(v==null||v==="")return null;var n=Number(v);return Number.isFinite(n)?n:null}
+function parseExtra(v){if(!v)return{};if(typeof v==="object")return v;try{return JSON.parse(v)}catch(e){return{}}}
 function nav(){var h="";Object.keys(TABS).forEach(function(k){h+='<button data-t="'+k+'" class="'+(k===tab?"on":"")+'">'+TABS[k].label+"</button>"});var n=document.getElementById("nav");n.innerHTML=h;n.querySelectorAll("button").forEach(function(b){b.onclick=function(){tab=b.dataset.t;nav();form();list()}})}
 function roastLabel(r){return [r.coffee,r.date,r.roaster].filter(Boolean).join(" · ")||"Roast"}
-function options(list, labelFn, empty){return '<option value="">'+(empty||"— choose —")+'</option>'+list.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(labelFn(x))+'</option>'}).join("")}
+function options(list,labelFn,empty){return '<option value="">'+(empty||"— choose —")+'</option>'+list.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(labelFn(x))+'</option>'}).join("")}
 function form(){
  var h="";
  if(tab==="orders"){
@@ -75,12 +79,9 @@ function form(){
  h+='<button class="go" id="save">Save</button>';document.getElementById("form").innerHTML=h;
  document.querySelectorAll("#form [data-k]").forEach(function(e){if(e.type==="date")e.value=today()});
  if(tab==="orders"){addBeanLine();document.getElementById("addBean").onclick=addBeanLine;}
- var batch=document.querySelector('#form [data-k="batchId"]');
- if(batch)batch.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");
- var cup=document.querySelector('#form [data-k="coffee"]');
- if(tab==="cups"&&cup){cup.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");}
- var inv=document.querySelector('#form [data-k="itemId"]');
- if(inv)inv.innerHTML=options(state.inventory,function(i){return i.section+" — "+i.item+" ("+i.unit+")"},"— choose inventory item —");
+ var batch=document.querySelector('#form [data-k="batchId"]');if(batch)batch.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");
+ var cup=document.querySelector('#form [data-k="coffee"]');if(tab==="cups"&&cup)cup.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");
+ var inv=document.querySelector('#form [data-k="itemId"]');if(inv)inv.innerHTML=options(state.inventory,function(i){return i.section+" — "+i.item+" ("+i.unit+")"},"— choose inventory item —");
  var sel=document.querySelector('#form [data-k="section"]');if(sel)sel.value="Green beans";
  document.getElementById("save").onclick=save;
 }
@@ -101,39 +102,76 @@ function addBeanLine(){
  '<button type="button" class="x remove-line">Remove line</button></div>';
  div.querySelector(".remove-line").onclick=function(){div.remove()};box.appendChild(div);
 }
-function save(){
- if(!db)return;
- var d={created:Date.now()},any=false;
+function toDbRow(which,d){
+ var extra=Object.assign({},d);
+ if(which==="orders")return {order_date:d.orderDate||today(),customer_name:d.customer||"",items:{beansLines:d.beansLines||[],app_data:extra},roast_id:idNum(d.batchId),notes:d.notes||null,app_data:extra};
+ if(which==="roasts")return {bean_name:d.coffee||"",roast_date:d.date||today(),batch_name:d.roaster||null,quantity_kg:idNum(d.inKg),notes:d.notes||null,app_data:extra};
+ if(which==="cups")return {roast_id:idNum(d.roastId||d.coffee),cup_number:d.cupNumber||null,cupping_date:d.date||today(),dry_aroma:d.dryAroma||null,wet_aroma:d.wetAroma||null,acidity:d.acidity||null,body:d.body||null,notes:d.notes||null,app_data:extra};
+ if(which==="inventory")return {item_name:d.item||"",category:d.section||"Green beans",quantity:Number(d.quantity)||0,unit:d.unit||"kg",app_data:extra};
+ return {item_id:idNum(d.itemId),quantity:Number(d.quantity)||0,stock_out_date:d.date||today(),notes:[d.reason,d.notes].filter(Boolean).join(" — ")||null,app_data:extra};
+}
+function fromDbRow(which,row){
+ var extra=parseExtra(row.app_data);
+ if(which==="orders")return Object.assign({},extra,{id:String(row.id),orderDate:row.order_date||extra.orderDate,customer:row.customer_name||extra.customer,beansLines:(extra.beansLines||(row.items&&row.items.beansLines)||[]),batchId:row.roast_id==null?(extra.batchId||""):String(row.roast_id),notes:row.notes||extra.notes||"",created:row.created_at||extra.created});
+ if(which==="roasts")return Object.assign({},extra,{id:String(row.id),coffee:row.bean_name||extra.coffee,date:row.roast_date||extra.date,roaster:row.batch_name||extra.roaster,inKg:row.quantity_kg==null?extra.inKg:row.quantity_kg,notes:row.notes||extra.notes||"",created:row.created_at||extra.created});
+ if(which==="cups")return Object.assign({},extra,{id:String(row.id),roastId:row.roast_id==null?(extra.roastId||""):String(row.roast_id),cupNumber:row.cup_number||extra.cupNumber,date:row.cupping_date||extra.date,dryAroma:row.dry_aroma||extra.dryAroma,wetAroma:row.wet_aroma||extra.wetAroma,acidity:row.acidity||extra.acidity,body:row.body||extra.body,notes:row.notes||extra.notes||"",created:row.created_at||extra.created});
+ if(which==="inventory")return Object.assign({},extra,{id:String(row.id),item:row.item_name,section:row.category,quantity:row.quantity,unit:row.unit,notes:extra.notes||"",created:row.updated_at||extra.created});
+ return Object.assign({},extra,{id:String(row.id),itemId:row.item_id==null?(extra.itemId||""):String(row.item_id),quantity:row.quantity,date:row.stock_out_date||extra.date,notes:extra.notes||"",reason:extra.reason||row.notes||"",created:row.created_at||extra.created});
+}
+async function loadAll(){
+ try{
+  var names=Object.keys(TABS);
+  var results=await Promise.all(names.map(function(k){return db.from(TABS[k].table).select("*").order("id",{ascending:false}).limit(500)}));
+  for(var i=0;i<names.length;i++){
+   if(results[i].error)throw new Error(TABS[names[i]].table+": "+results[i].error.message);
+   state[names[i]]=results[i].data.map(function(row){return fromDbRow(names[i],row)});
+  }
+  state.cups.forEach(function(c){if(c.roastId){var r=state.roasts.find(function(x){return String(x.id)===String(c.roastId)});if(r){c.roastLabel=roastLabel(r);if(!c.coffee)c.coffee=r.coffee}}});
+  state.stockouts.forEach(function(s){if(s.itemId){var i=state.inventory.find(function(x){return String(x.id)===String(s.itemId)});if(i){s.itemLabel=s.itemLabel||i.section+" — "+i.item;s.unit=s.unit||i.unit}}});
+  list();form();msg("Connected to Supabase · data loaded.");
+ }catch(e){msg("Supabase error: "+(e&&e.message||String(e))+" · Check table permissions/RLS and app_data columns.");console.error(e)}
+}
+async function save(){
+ if(!db){msg("Supabase is not configured.");return}
+ var d={created:new Date().toISOString()},any=false;
  document.querySelectorAll("#form [data-k]").forEach(function(e){var v=e.value;if(e.type==="number"&&v!=="")v=Number(v);d[e.dataset.k]=v;if(v!==""&&e.type!=="date"&&e.tagName!=="SELECT")any=true});
  if(tab==="orders"){
   d.beansLines=Array.from(document.querySelectorAll(".bean-line")).map(function(x){return {bean:x.querySelector('[data-line="bean"]').value,packaging:x.querySelector('[data-line="pack"]').value,quantity:Number(x.querySelector('[data-line="qty"]').value)||1,roastId:x.querySelector('[data-line="roast"]').value}}).filter(function(x){return x.bean.trim()});
   if(!d.beansLines.length){msg("Please add at least one Beans line.");return}
   d.status="New";d.batchId=d.batchId||"";
  }else if(tab==="cups"){
-  var r=state.roasts.filter(function(x){return x.id===d.coffee})[0];d.roastId=d.coffee;d.roastLabel=r?roastLabel(r):"";d.coffee=r?r.coffee:"";
+  var r=state.roasts.find(function(x){return String(x.id)===String(d.coffee)});
+  d.roastId=d.coffee;d.roastLabel=r?roastLabel(r):"";d.coffee=r?r.coffee:"";
  }else if(tab==="stockouts"){
   if(!(Number(d.quantity)>0)){msg("Enter a stock-out quantity greater than zero.");return}
-  var inv=state.inventory.filter(function(x){return x.id===d.itemId})[0];if(!inv){msg("Choose an inventory item.");return}
+  var inv=state.inventory.find(function(x){return String(x.id)===String(d.itemId)});
+  if(!inv){msg("Choose an inventory item.");return}
   d.itemLabel=inv.section+" — "+inv.item;d.unit=inv.unit;
  }
- if(!any&&tab!=="orders"){return}
- db.collection(tab).add(d).then(function(){form();list();msg("Saved — shared with your team.")},function(e){msg("Could not save: "+(e&&e.message||"error"))});
+ if(!any&&tab!=="orders"){msg("Please fill in the form.");return}
+ try{
+  msg("Saving…");
+  var payload=toDbRow(tab,d);
+  var result=await db.from(TABS[tab].table).insert(payload);
+  if(result.error)throw result.error;
+  msg("Saved successfully.");await loadAll();
+ }catch(e){msg("Could not save: "+(e&&e.message||String(e)));console.error(e)}
 }
 function line(a){return a.filter(function(x){return x!==""&&x!=null}).map(esc).join(" · ")}
 function list(){
- var h="",items=state[tab];
+ var h="",items=state[tab]||[];
  if(tab==="inventory"){
   ["Green beans","Roasted beans","Packaging"].forEach(function(sec){
    h+='<div class="card"><div class="t">'+sec+'</div>';
    var its=state.inventory.filter(function(i){return i.section===sec});
    if(!its.length)h+='<p class="m">No items yet.</p>';
-   its.forEach(function(i){var outs=state.stockouts.filter(function(s){return s.itemId===i.id}).reduce(function(a,s){return a+(Number(s.quantity)||0)},0);h+='<div class="card"><div class="t">'+esc(i.item)+'</div><div class="m">Opening: '+esc(i.quantity)+' '+esc(i.unit)+' · Stock out: '+outs+' '+esc(i.unit)+' · Available: '+((Number(i.quantity)||0)-outs)+' '+esc(i.unit)+'</div>'+(i.notes?'<div class="m">'+esc(i.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+i.id+'">Delete</button></div>'});
+   its.forEach(function(i){var outs=state.stockouts.filter(function(s){return String(s.itemId)===String(i.id)}).reduce(function(a,s){return a+(Number(s.quantity)||0)},0);h+='<div class="card"><div class="t">'+esc(i.item)+'</div><div class="m">Opening: '+esc(i.quantity)+' '+esc(i.unit)+' · Stock out: '+outs+' '+esc(i.unit)+' · Available: '+((Number(i.quantity)||0)-outs)+' '+esc(i.unit)+'</div>'+(i.notes?'<div class="m">'+esc(i.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+i.id+'">Delete</button></div>'});
    h+='</div>';
   });
  }else if(!items.length)h='<p class="m">Nothing logged yet.</p>';
  items.forEach(function(r){
   if(tab==="orders"){
-   var beans=(r.beansLines||[]).map(function(b){return [b.bean,b.packaging,b.quantity+" unit(s)",(state.roasts.filter(function(x){return x.id===b.roastId})[0]||{}).date].filter(Boolean).join(" · ")}).join("<br>");
+   var beans=(r.beansLines||[]).map(function(b){var rr=state.roasts.find(function(x){return String(x.id)===String(b.roastId)});return [b.bean,b.packaging,b.quantity+" unit(s)",rr&&rr.date].filter(Boolean).join(" · ")}).map(esc).join("<br>");
    h+='<div class="card"><div class="row"><div><div class="t">'+esc(r.customer||"Customer")+'</div><div class="m">'+line([r.channel,r.orderDate,r.ref?"#"+r.ref:""])+'</div></div><button class="pill" data-a="next" data-id="'+r.id+'">'+esc(r.status||"New")+' ›</button></div><div class="m">'+beans+'</div>'+(r.courier||r.tracking||r.shipName||r.shipAddress?'<div class="m">'+line([r.courier,r.tracking,r.shipName,r.shipPhone,r.shipAddress])+'</div>':'')+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
   }else if(tab==="roasts"){
    var loss=r.inKg>0&&r.outKg>0?((r.inKg-r.outKg)/r.inKg*100).toFixed(1)+"% loss":"";
@@ -145,22 +183,29 @@ function list(){
   }
  });
  var L=document.getElementById("list");L.innerHTML=h;
- L.querySelectorAll("button[data-a]").forEach(function(b){b.onclick=function(){if(!db)return;var a=b.dataset.a,id=b.dataset.id;if(a==="del"){if(confirm("Delete this entry?"))db.doc(tab+"/"+id).delete()}else{var cur=items.filter(function(x){return x.id===id})[0];var i=STATUS.indexOf(cur.status||"New");db.doc(tab+"/"+id).update({status:STATUS[(i+1)%STATUS.length]})}}});
+ L.querySelectorAll("button[data-a]").forEach(function(b){b.onclick=async function(){
+  var a=b.dataset.a,id=b.dataset.id,cur=items.find(function(x){return String(x.id)===String(id)});
+  if(a==="del"){
+   if(!confirm("Delete this entry?"))return;
+   try{var del=await db.from(TABS[tab].table).delete().eq("id",Number(id));if(del.error)throw del.error;await loadAll();msg("Entry deleted.")}catch(e){msg("Delete failed: "+e.message)}
+  }else if(a==="next"&&cur){
+   var i=STATUS.indexOf(cur.status||"New"),next=STATUS[(i+1)%STATUS.length],payload=toDbRow("orders",Object.assign({},cur,{status:next}));
+   try{var upd=await db.from("orders").update({app_data:Object.assign({},cur,{status:next}),items:payload.items}).eq("id",Number(id));if(upd.error)throw upd.error;await loadAll();msg("Order status updated to "+next+".")}catch(e){msg("Status update failed: "+e.message)}
+  }
+ }});
 }
-nav();form();list();
-claude.use("db").then(function(d){db=d;if(!db){msg("Sign in to the artifact to load and save shared data.");return}msg("Shared with your team — changes appear live.");Object.keys(TABS).forEach(function(n){db.collection(n).orderBy("created","desc").onSnapshot(function(s){state[n]=s.docs.map(function(x){var o=x.data();o.id=x.id;return o});list();if(["orders","cups","stockouts"].indexOf(tab)>=0)form()},function(e){msg("Data error: "+(e&&e.code||"unknown"))})})},function(){msg("Shared data is unavailable here.")});
-</script>
- <!-- Supabase JavaScript SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!-- Your Supabase configuration -->
-<script src="./config.js"></script>
-<!-- Initialize Supabase -->
-<script>
-  window.roasterySupabase = window.supabase.createClient(
-    window.ROASTERY_CONFIG.url,
-    window.ROASTERY_CONFIG.anonKey
-  );
-  console.log("Roastery Hub: Supabase client initialized");
+async function init(){
+ nav();form();list();
+ try{
+  if(!window.supabase||!window.ROASTERY_CONFIG)throw new Error("Missing Supabase SDK or config.js");
+  var url=String(window.ROASTERY_CONFIG.url||"").replace(/\/rest\/v1\/?$/,"").replace(/\/+$/,"");
+  var key=window.ROASTERY_CONFIG.anonKey;
+  if(!url||!key)throw new Error("Supabase URL or publishable key is missing");
+  db=window.supabase.createClient(url,key);
+  await loadAll();
+ }catch(e){msg("Connection failed: "+e.message);console.error(e)}
+}
+init();
 </script>
 </body>
 </html>
