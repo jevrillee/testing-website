@@ -214,7 +214,7 @@ function list(){
  var L=document.getElementById("list");L.innerHTML=h;
  L.querySelectorAll("button[data-a]").forEach(function(b){b.onclick=async function(){
   var a=b.dataset.a,id=b.dataset.id,cur=items.find(function(x){return String(x.id)===String(id)});
-  if(a==="edit"&&cur){if(tab==="orders"){editingOrderId=String(cur.id);editingOrder=Object.assign({},cur);editingOtherId=null;editingOtherRecord=null;editingOtherTab=null;msg("Editing order #"+cur.id+".");}else{editingOrderId=null;editingOrder=null;editingOtherId=String(cur.id);editingOtherRecord=Object.assign({},cur);editingOtherTab=tab;msg("Editing record #"+cur.id+".");}nav();form();list();document.getElementById("form").scrollIntoView({behavior:"smooth",block:"start");
+  if(a==="edit"&&cur){if(tab==="orders"){editingOrderId=String(cur.id);editingOrder=Object.assign({},cur);editingOtherId=null;editingOtherRecord=null;editingOtherTab=null;msg("Editing order #"+cur.id+".");}else{editingOrderId=null;editingOrder=null;editingOtherId=String(cur.id);editingOtherRecord=Object.assign({},cur);editingOtherTab=tab;msg("Editing record #"+cur.id+".");}nav();form();list();document.getElementById("form").scrollIntoView({behavior:"smooth",block:"start"});
   }else if(a==="del"){
    if(!confirm("Delete this entry?"))return;
    try{var del=await db.from(TABS[tab].table).delete().eq("id",Number(id));if(del.error)throw del.error;await loadAll();msg("Entry deleted.")}catch(e){msg("Delete failed: "+e.message)}
