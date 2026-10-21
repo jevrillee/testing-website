@@ -27,7 +27,8 @@ input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border
 .pill{border:1px solid var(--acc);color:var(--acc);background:none;border-radius:99px;padding:4px 10px;font-size:13px}
 .x{border:0;background:none;color:var(--mut);font-size:13px;padding:4px}
 #msg{color:var(--mut);font-size:13px;margin:0 0 10px}
-#loginCard{max-width:420px;margin:24px auto}\n#loginCard h2{font-size:17px;margin:0 0 8px}
+#loginCard{max-width:420px;margin:24px auto}
+#loginCard h2{font-size:17px;margin:0 0 8px}
 #loginError{color:#b42318;font-size:13px;margin-top:8px}
 #accountbar{margin-bottom:10px}
 [hidden]{display:none!important}
@@ -161,7 +162,7 @@ async function save(){
  if(tab==="orders"){
   d.beansLines=Array.from(document.querySelectorAll(".bean-line")).map(function(x){return {bean:x.querySelector('[data-line="bean"]').value,packaging:x.querySelector('[data-line="pack"]').value,quantity:Number(x.querySelector('[data-line="qty"]').value)||1,roastId:x.querySelector('[data-line="roast"]').value}}).filter(function(x){return x.bean.trim()});
   if(!d.beansLines.length){msg("Please add at least one Beans line.");return}
-  d.status="New";d.batchId=d.batchId||"";
+  d.status=(editingOrder&&editingOrder.status)||"New";d.batchId=d.batchId||"";
  }else if(tab==="cups"){
   var r=state.roasts.find(function(x){return String(x.id)===String(d.coffee)});
   d.roastId=d.coffee;d.roastLabel=r?roastLabel(r):"";d.coffee=r?r.coffee:"";
