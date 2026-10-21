@@ -66,7 +66,7 @@ var TABS={
  inventory:{label:"Inventory",title:"Manage inventory",table:"inventory_items"},
  stockouts:{label:"Stock Out",title:"Record stock out",table:"stock_outs"}
 };
-var state={orders:[],roasts:[],cups:[],inventory:[],stockouts:[]},tab="orders",db=null,editingOrderId=null,editingOrder=null;
+var state={orders:[],roasts:[],cups:[],inventory:[],stockouts:[]},tab="orders",db=null,editingOrderId=null,editingOrder=null,editingOtherId=null,editingOtherRecord=null,editingOtherTab=null;
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function msg(t){document.getElementById("msg").textContent=t}
 function today(){return new Date().toISOString().slice(0,10)}
@@ -85,16 +85,16 @@ function form(){
   field("batchId","Roast batch used","select",state.roasts.map(function(r){return r.id+"|"+roastLabel(r)}),"full")+
   field("courier","Courier","text")+field("tracking","Courier ref. no.","text")+field("shipName","Ship to: name","text")+field("shipPhone","Ship to: phone","text")+field("shipAddress","Ship to: address","text","full")+field("notes","Notes","textarea","full")+'</div>';
  }else if(tab==="roasts"){
-  h='<div class="t">Log a roast</div><div class="grid">'+field("date","Roast date","date")+field("roaster","Roaster","select",["P5","P12"])+field("coffee","Beans","text","full")+
+  h='<div class="t">'+(editingOtherTab===tab&&editingOtherId?"Edit roast":"Log a roast")+'</div><div class="grid">'+field("date","Roast date","date")+field("roaster","Roaster","select",["P5","P12","HB"])+field("coffee","Beans","text","full")+
   field("amb","Ambient temp (°C)","number")+field("hum","Humidity (%)","number")+field("inKg","Input weight (kg)","number")+field("outKg","Output weight (kg)","number")+field("tp","Turning point (min:sec)","text")+field("tpT","Turning point temp (°C)","number")+field("fc","First crack (min:sec)","text")+field("fcT","First crack temp (°C)","number")+field("drop","Ending time (min:sec)","text")+field("dropT","Ending temp (°C)","number")+field("agtron","Agtron bean / ground","text","full")+field("notes","Notes","textarea","full")+'</div>';
  }else if(tab==="cups"){
-  h='<div class="t">Cupping notes</div><div class="grid">'+field("coffee","Beans / roast batch","select",state.roasts.map(function(r){return r.id+"|"+roastLabel(r)}),"full")+field("cupNumber","Cup number","text")+field("date","Cupping Date","date")+field("dryAroma","Dry Aroma","textarea","full")+field("wetAroma","Wet Aroma","textarea","full")+field("acidity","Acidity","textarea","full")+field("body","Body","textarea","full")+field("notes","Cupping notes","textarea","full")+'</div>';
+  h='<div class="t">'+(editingOtherTab===tab&&editingOtherId?"Edit cupping notes":"Cupping notes")+'</div><div class="grid">'+field("coffee","Beans / roast batch","select",state.roasts.map(function(r){return r.id+"|"+roastLabel(r)}),"full")+field("cupNumber","Cup number","text")+field("date","Cupping Date","date")+field("dryAroma","Dry Aroma","textarea","full")+field("wetAroma","Wet Aroma","textarea","full")+field("acidity","Acidity","textarea","full")+field("body","Body","textarea","full")+field("notes","Cupping notes","textarea","full")+'</div>';
  }else if(tab==="inventory"){
-  h='<div class="t">Add inventory item</div><div class="grid">'+field("section","Section","select",["Green beans","Roasted beans","Packaging"])+field("item","Item / bean / packaging name","text","full")+field("unit","Unit","select",["g","kg","pcs","bags"])+field("quantity","Opening quantity","number")+field("notes","Notes","textarea","full")+'</div>';
+  h='<div class="t">'+(editingOtherTab===tab&&editingOtherId?"Edit inventory item":"Add inventory item")+'</div><div class="grid">'+field("section","Section","select",["Green beans","Roasted beans","Packaging"])+field("item","Item / bean / packaging name","text","full")+field("unit","Unit","select",["g","kg","pcs","bags"])+field("quantity","Opening quantity","number")+field("notes","Notes","textarea","full")+'</div>';
  }else{
-  h='<div class="t">Record stock out</div><div class="grid">'+field("date","Date","date")+field("itemId","Inventory item","select",state.inventory.map(function(i){return i.id+"|"+i.section+" — "+i.item+" ("+i.unit+")"}),"full")+field("quantity","Quantity out","number")+field("reason","Reason / order reference","text","full")+field("notes","Notes","textarea","full")+'</div>';
+  h='<div class="t">'+(editingOtherTab===tab&&editingOtherId?"Edit stock-out record":"Record stock out")+'</div><div class="grid">'+field("date","Date","date")+field("itemId","Inventory item","select",state.inventory.map(function(i){return i.id+"|"+i.section+" — "+i.item+" ("+i.unit+")"}),"full")+field("quantity","Quantity out","number")+field("reason","Reason / order reference","text","full")+field("notes","Notes","textarea","full")+'</div>';
  }
- h+='<button class="go" id="save">Save</button>'+(tab==="orders"&&editingOrderId?'<button type="button" class="pill" id="cancelEdit" style="width:100%;margin-top:8px">Cancel editing</button>':"");document.getElementById("form").innerHTML=h;
+ h+='<button class="go" id="save">'+(((tab==="orders"&&editingOrderId)||(editingOtherTab===tab&&editingOtherId))?"Update record":"Save")+"</button>"+(((tab==="orders"&&editingOrderId)||(editingOtherTab===tab&&editingOtherId))?'<button type="button" class="pill" id="cancelEdit" style="width:100%;margin-top:8px">Cancel editing</button>':"");document.getElementById("form").innerHTML=h;
  document.querySelectorAll("#form [data-k]").forEach(function(e){if(e.type==="date")e.value=today()});
  if(tab==="orders"){if(editingOrder&&String(editingOrder.id)===String(editingOrderId)){(editingOrder.beansLines||[]).forEach(function(item){addBeanLine(item)});if(!(editingOrder.beansLines||[]).length)addBeanLine();}else{addBeanLine()}document.getElementById("addBean").onclick=function(){addBeanLine()};}
  var batch=document.querySelector('#form [data-k="batchId"]');if(batch)batch.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");
@@ -102,7 +102,9 @@ function form(){
  var inv=document.querySelector('#form [data-k="itemId"]');if(inv)inv.innerHTML=options(state.inventory,function(i){return i.section+" — "+i.item+" ("+i.unit+")"},"— choose inventory item —");
  var sel=document.querySelector('#form [data-k="section"]');if(sel)sel.value="Green beans";
  if(tab==="orders"&&editingOrder){document.querySelectorAll("#form [data-k]").forEach(function(e){var v=editingOrder[e.dataset.k];if(v!==undefined&&v!==null)e.value=String(v)});var bsel=document.querySelector('#form [data-k="batchId"]');if(bsel&&editingOrder.batchId)bsel.value=String(editingOrder.batchId);}
- if(tab==="orders"&&editingOrderId){document.getElementById("save").textContent="Update order";var cancel=document.getElementById("cancelEdit");if(cancel)cancel.onclick=function(){editingOrderId=null;editingOrder=null;form();list();};}
+ if(tab==="orders"&&editingOrderId){document.getElementById("save").textContent="Update order";}
+ if(editingOtherTab===tab&&editingOtherId&&editingOtherRecord){var rec=Object.assign({},editingOtherRecord);if(tab==="cups")rec.coffee=rec.roastId||"";document.querySelectorAll("#form [data-k]").forEach(function(e){var v=rec[e.dataset.k];if(v!==undefined&&v!==null)e.value=String(v)});}
+ var cancel=document.getElementById("cancelEdit");if(cancel)cancel.onclick=function(){editingOrderId=null;editingOrder=null;editingOtherId=null;editingOtherRecord=null;editingOtherTab=null;form();list();msg("Editing cancelled.");};
  document.getElementById("save").onclick=save;
 }
 function field(k,label,type,opts,wide){
@@ -177,11 +179,11 @@ async function save(){
   msg("Saving…");
   var payload=toDbRow(tab,d);
   var result;
-  if(tab==="orders"&&editingOrderId){result=await db.from("orders").update(payload).eq("id",Number(editingOrderId));}
-  else{result=await db.from(TABS[tab].table).insert(payload);}
+  var wasEditing=tab==="orders"?!!editingOrderId:(editingOtherTab===tab&&!!editingOtherId);var updateId=tab==="orders"?editingOrderId:editingOtherId;
+  if(wasEditing){result=await db.from(TABS[tab].table).update(payload).eq("id",Number(updateId));}else{result=await db.from(TABS[tab].table).insert(payload);}
   if(result.error)throw result.error;
-  var wasEditing=tab==="orders"&&!!editingOrderId;editingOrderId=null;editingOrder=null;
-  msg(wasEditing?"Order updated successfully.":"Saved successfully.");await loadAll();
+  editingOrderId=null;editingOrder=null;editingOtherId=null;editingOtherRecord=null;editingOtherTab=null;
+  msg(wasEditing?"Record updated successfully.":"Saved successfully.");await loadAll();
  }catch(e){msg("Could not save: "+(e&&e.message||String(e)));console.error(e)}
 }
 function line(a){return a.filter(function(x){return x!==""&&x!=null}).map(esc).join(" · ")}
@@ -192,7 +194,7 @@ function list(){
    h+='<div class="card"><div class="t">'+sec+'</div>';
    var its=state.inventory.filter(function(i){return i.section===sec});
    if(!its.length)h+='<p class="m">No items yet.</p>';
-   its.forEach(function(i){var outs=state.stockouts.filter(function(s){return String(s.itemId)===String(i.id)}).reduce(function(a,s){return a+(Number(s.quantity)||0)},0);h+='<div class="card"><div class="t">'+esc(i.item)+'</div><div class="m">Opening: '+esc(i.quantity)+' '+esc(i.unit)+' · Stock out: '+outs+' '+esc(i.unit)+' · Available: '+((Number(i.quantity)||0)-outs)+' '+esc(i.unit)+'</div>'+(i.notes?'<div class="m">'+esc(i.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+i.id+'">Delete</button></div>'});
+   its.forEach(function(i){var outs=state.stockouts.filter(function(s){return String(s.itemId)===String(i.id)}).reduce(function(a,s){return a+(Number(s.quantity)||0)},0);h+='<div class="card"><div class="t">'+esc(i.item)+'</div><div class="m">Opening: '+esc(i.quantity)+' '+esc(i.unit)+' · Stock out: '+outs+' '+esc(i.unit)+' · Available: '+((Number(i.quantity)||0)-outs)+' '+esc(i.unit)+'</div>'+(i.notes?'<div class="m">'+esc(i.notes)+'</div>':'')+'<button class="pill" data-a="edit" data-id="'+i.id+'">View / Edit</button> <button class="x" data-a="del" data-id="'+i.id+'">Delete</button></div>'});
    h+='</div>';
   });
  }else if(!items.length)h='<p class="m">Nothing logged yet.</p>';
@@ -202,17 +204,17 @@ function list(){
    h+='<div class="card"><div class="row"><div><div class="t">'+esc(r.customer||"Customer")+(r.ref?' <span class="m">#'+esc(r.ref)+'</span>':"")+'</div><div class="m">'+line([r.channel,"Order: "+(r.orderDate||"—")])+'</div></div><button class="pill" data-a="next" data-id="'+r.id+'">'+esc(r.status||"New")+' ›</button></div><div class="m">'+line(["Roasting: "+(r.roastingDate||"—"),"Completed: "+(r.completedDate||"—")])+'</div><div class="m">'+beans+'</div>'+(r.courier||r.tracking||r.shipName||r.shipAddress?'<div class="m">'+line([r.courier,r.tracking,r.shipName,r.shipPhone,r.shipAddress])+'</div>':'')+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="pill" data-a="edit" data-id="'+r.id+'">View / Edit order</button> <button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
   }else if(tab==="roasts"){
    var loss=r.inKg>0&&r.outKg>0?((r.inKg-r.outKg)/r.inKg*100).toFixed(1)+"% loss":"";
-   h+='<div class="card"><div class="t">'+esc(r.coffee||"Roast")+'</div><div class="m">'+line([r.date,r.roaster,r.inKg+" → "+r.outKg+" kg",loss,"Batch: "+r.id])+'</div>'+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+   h+='<div class="card"><div class="t">'+esc(r.coffee||"Roast")+'</div><div class="m">'+line([r.date,r.roaster,r.inKg+" → "+r.outKg+" kg",loss,"Batch: "+r.id])+'</div>'+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="pill" data-a="edit" data-id="'+r.id+'">View / Edit roast</button> <button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
   }else if(tab==="cups"){
-   h+='<div class="card"><div class="t">'+esc(r.roastLabel||r.coffee||"Cupping")+'</div><div class="m">'+line(["Cupping Date: "+(r.date||""),"Cup number: "+(r.cupNumber||"")])+'</div>'+["dryAroma","wetAroma","acidity","body","notes"].map(function(k){return r[k]?'<div class="m"><b>'+({dryAroma:"Dry Aroma",wetAroma:"Wet Aroma",acidity:"Acidity",body:"Body",notes:"Cupping notes"}[k])+':</b> '+esc(r[k])+'</div>':''}).join("")+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+   h+='<div class="card"><div class="t">'+esc(r.roastLabel||r.coffee||"Cupping")+'</div><div class="m">'+line(["Cupping Date: "+(r.date||""),"Cup number: "+(r.cupNumber||"")])+'</div>'+["dryAroma","wetAroma","acidity","body","notes"].map(function(k){return r[k]?'<div class="m"><b>'+({dryAroma:"Dry Aroma",wetAroma:"Wet Aroma",acidity:"Acidity",body:"Body",notes:"Cupping notes"}[k])+':</b> '+esc(r[k])+'</div>':''}).join("")+'<button class="pill" data-a="edit" data-id="'+r.id+'">View / Edit cupping</button> <button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
   }else if(tab==="stockouts"){
-   h+='<div class="card"><div class="t">'+esc(r.itemLabel||"Stock out")+'</div><div class="m">'+line([r.date,r.quantity+" "+(r.unit||""),r.reason])+'</div>'+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+   h+='<div class="card"><div class="t">'+esc(r.itemLabel||"Stock out")+'</div><div class="m">'+line([r.date,r.quantity+" "+(r.unit||""),r.reason])+'</div>'+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="pill" data-a="edit" data-id="'+r.id+'">View / Edit stock out</button> <button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
   }
  });
  var L=document.getElementById("list");L.innerHTML=h;
  L.querySelectorAll("button[data-a]").forEach(function(b){b.onclick=async function(){
   var a=b.dataset.a,id=b.dataset.id,cur=items.find(function(x){return String(x.id)===String(id)});
-  if(a==="edit"&&cur){editingOrderId=String(cur.id);editingOrder=Object.assign({},cur);tab="orders";nav();form();list();document.getElementById("form").scrollIntoView({behavior:"smooth",block:"start"});msg("Editing order #"+cur.id+". Update the fields and save.");
+  if(a==="edit"&&cur){if(tab==="orders"){editingOrderId=String(cur.id);editingOrder=Object.assign({},cur);editingOtherId=null;editingOtherRecord=null;editingOtherTab=null;msg("Editing order #"+cur.id+".");}else{editingOrderId=null;editingOrder=null;editingOtherId=String(cur.id);editingOtherRecord=Object.assign({},cur);editingOtherTab=tab;msg("Editing record #"+cur.id+".");}nav();form();list();document.getElementById("form").scrollIntoView({behavior:"smooth",block:"start");
   }else if(a==="del"){
    if(!confirm("Delete this entry?"))return;
    try{var del=await db.from(TABS[tab].table).delete().eq("id",Number(id));if(del.error)throw del.error;await loadAll();msg("Entry deleted.")}catch(e){msg("Delete failed: "+e.message)}
