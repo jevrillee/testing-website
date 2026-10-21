@@ -150,5 +150,17 @@ function list(){
 nav();form();list();
 claude.use("db").then(function(d){db=d;if(!db){msg("Sign in to the artifact to load and save shared data.");return}msg("Shared with your team — changes appear live.");Object.keys(TABS).forEach(function(n){db.collection(n).orderBy("created","desc").onSnapshot(function(s){state[n]=s.docs.map(function(x){var o=x.data();o.id=x.id;return o});list();if(["orders","cups","stockouts"].indexOf(tab)>=0)form()},function(e){msg("Data error: "+(e&&e.code||"unknown"))})})},function(){msg("Shared data is unavailable here.")});
 </script>
+ <!-- Supabase JavaScript SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Your Supabase configuration -->
+<script src="./config.js"></script>
+<!-- Initialize Supabase -->
+<script>
+  window.roasterySupabase = window.supabase.createClient(
+    window.ROASTERY_CONFIG.url,
+    window.ROASTERY_CONFIG.anonKey
+  );
+  console.log("Roastery Hub: Supabase client initialized");
+</script>
 </body>
 </html>
