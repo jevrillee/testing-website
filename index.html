@@ -32,10 +32,23 @@ input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border
 <body>
 <div class="wrap">
 <h1>☕ Roastery Hub</h1>
+<div class="card" id="loginCard">
+<h2>Sign in to Roastery Hub</h2>
+<p class="m">Use your team’s shared account to access roasting, orders and inventory.</p>
+<form id="loginForm">
+<label>Email<input id="loginEmail" type="email" autocomplete="username" required></label>
+<label style="margin-top:10px">Password<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+<button class="go" id="loginButton" type="submit">Sign in</button>
+<p id="loginError" role="alert"></p>
+</form>
+</div>
+<div id="app" hidden>
+<div class="row" id="accountbar"><span class="m" id="accountLabel"></span><button class="pill" id="logoutButton" type="button">Sign out</button></div>
 <p id="msg">Connecting…</p>
 <nav id="nav"></nav>
 <div class="card" id="form"></div>
 <div id="list"></div>
+</div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./config.js"></script>
