@@ -26,7 +26,11 @@ input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border
 .t{font-weight:600}.m{color:var(--mut);font-size:13px}
 .pill{border:1px solid var(--acc);color:var(--acc);background:none;border-radius:99px;padding:4px 10px;font-size:13px}
 .x{border:0;background:none;color:var(--mut);font-size:13px;padding:4px}
-#msg{color:var(--mut);font-size:13px;margin:0 0 10px}\n#loginCard{max-width:420px;margin:24px auto}\n#loginCard h2{font-size:17px;margin:0 0 8px}\n#loginError{color:#b42318;font-size:13px;margin-top:8px}\n#accountbar{margin-bottom:10px}\n[hidden]{display:none!important}
+#msg{color:var(--mut);font-size:13px;margin:0 0 10px}
+#loginCard{max-width:420px;margin:24px auto}\n#loginCard h2{font-size:17px;margin:0 0 8px}
+#loginError{color:#b42318;font-size:13px;margin-top:8px}
+#accountbar{margin-bottom:10px}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -61,7 +65,7 @@ var TABS={
  inventory:{label:"Inventory",title:"Manage inventory",table:"inventory_items"},
  stockouts:{label:"Stock Out",title:"Record stock out",table:"stock_outs"}
 };
-var state={orders:[],roasts:[],cups:[],inventory:[],stockouts:[]},tab="orders",db=null;
+var state={orders:[],roasts:[],cups:[],inventory:[],stockouts:[]},tab="orders",db=null,editingOrderId=null,editingOrder=null;
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function msg(t){document.getElementById("msg").textContent=t}
 function today(){return new Date().toISOString().slice(0,10)}
@@ -75,7 +79,7 @@ function form(){
  if(tab==="orders"){
   h='<div class="t">New sales order</div><div class="grid">'+
   field("orderDate","Order date","date")+field("channel","Channel","select",["Shopee","WhatsApp / phone","Roastery book (wholesale)","Email","Other"])+
-  field("customer","Customer","text")+field("ref","Order no.","text")+
+  field("customer","Customer","text")+field("ref","Order no.","text")+field("roastingDate","Roasting date","date")+field("completedDate","Completed date","date")+
   '<div class="full"><div class="row"><div class="t">Beans</div><button type="button" class="pill" id="addBean">+ Add beans line</button></div><div id="beanLines"></div></div>'+
   field("batchId","Roast batch used","select",state.roasts.map(function(r){return r.id+"|"+roastLabel(r)}),"full")+
   field("courier","Courier","text")+field("tracking","Courier ref. no.","text")+field("shipName","Ship to: name","text")+field("shipPhone","Ship to: phone","text")+field("shipAddress","Ship to: address","text","full")+field("notes","Notes","textarea","full")+'</div>';
@@ -89,13 +93,15 @@ function form(){
  }else{
   h='<div class="t">Record stock out</div><div class="grid">'+field("date","Date","date")+field("itemId","Inventory item","select",state.inventory.map(function(i){return i.id+"|"+i.section+" — "+i.item+" ("+i.unit+")"}),"full")+field("quantity","Quantity out","number")+field("reason","Reason / order reference","text","full")+field("notes","Notes","textarea","full")+'</div>';
  }
- h+='<button class="go" id="save">Save</button>';document.getElementById("form").innerHTML=h;
+ h+='<button class="go" id="save">Save</button>'+(tab==="orders"&&editingOrderId?'<button type="button" class="pill" id="cancelEdit" style="width:100%;margin-top:8px">Cancel editing</button>':"");document.getElementById("form").innerHTML=h;
  document.querySelectorAll("#form [data-k]").forEach(function(e){if(e.type==="date")e.value=today()});
- if(tab==="orders"){addBeanLine();document.getElementById("addBean").onclick=addBeanLine;}
+ if(tab==="orders"){if(editingOrder&&String(editingOrder.id)===String(editingOrderId)){(editingOrder.beansLines||[]).forEach(function(item){addBeanLine(item)});if(!(editingOrder.beansLines||[]).length)addBeanLine();}else{addBeanLine()}document.getElementById("addBean").onclick=function(){addBeanLine()};}
  var batch=document.querySelector('#form [data-k="batchId"]');if(batch)batch.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");
  var cup=document.querySelector('#form [data-k="coffee"]');if(tab==="cups"&&cup)cup.innerHTML=options(state.roasts,roastLabel,"— choose roast batch —");
  var inv=document.querySelector('#form [data-k="itemId"]');if(inv)inv.innerHTML=options(state.inventory,function(i){return i.section+" — "+i.item+" ("+i.unit+")"},"— choose inventory item —");
  var sel=document.querySelector('#form [data-k="section"]');if(sel)sel.value="Green beans";
+ if(tab==="orders"&&editingOrder){document.querySelectorAll("#form [data-k]").forEach(function(e){var v=editingOrder[e.dataset.k];if(v!==undefined&&v!==null)e.value=String(v)});var bsel=document.querySelector('#form [data-k="batchId"]');if(bsel&&editingOrder.batchId)bsel.value=String(editingOrder.batchId);}
+ if(tab==="orders"&&editingOrderId){document.getElementById("save").textContent="Update order";var cancel=document.getElementById("cancelEdit");if(cancel)cancel.onclick=function(){editingOrderId=null;editingOrder=null;form();list();};}
  document.getElementById("save").onclick=save;
 }
 function field(k,label,type,opts,wide){
@@ -104,8 +110,8 @@ function field(k,label,type,opts,wide){
  type==="textarea"?'<textarea rows="3" data-k="'+k+'"></textarea>':'<input data-k="'+k+'" type="'+type+'"'+(type==="number"?' step="any" inputmode="decimal"':"")+'>';
  return '<label class="'+cls+'">'+label+input+'</label>';
 }
-function addBeanLine(){
- var box=document.getElementById("beanLines");if(!box)return;
+function addBeanLine(item){
+ var box=document.getElementById("beanLines");if(!box)return;item=item||{};
  var div=document.createElement("div");div.className="card bean-line";
  div.innerHTML='<div class="grid">'+
  '<label class="full">Beans<input data-line="bean" type="text" placeholder="Bean name"></label>'+
@@ -114,6 +120,10 @@ function addBeanLine(){
  '<label class="full">Roast date<select data-line="roast">'+options(state.roasts,roastLabel,"— choose roast date / batch —")+'</select></label>'+
  '<button type="button" class="x remove-line">Remove line</button></div>';
  div.querySelector(".remove-line").onclick=function(){div.remove()};box.appendChild(div);
+ div.querySelector('[data-line="bean"]').value=item.bean||"";
+ div.querySelector('[data-line="pack"]').value=item.packaging||"100g";
+ div.querySelector('[data-line="qty"]').value=item.quantity||1;
+ div.querySelector('[data-line="roast"]').value=item.roastId||"";
 }
 function toDbRow(which,d){
  var extra=Object.assign({},d);
@@ -165,9 +175,12 @@ async function save(){
  try{
   msg("Saving…");
   var payload=toDbRow(tab,d);
-  var result=await db.from(TABS[tab].table).insert(payload);
+  var result;
+  if(tab==="orders"&&editingOrderId){result=await db.from("orders").update(payload).eq("id",Number(editingOrderId));}
+  else{result=await db.from(TABS[tab].table).insert(payload);}
   if(result.error)throw result.error;
-  msg("Saved successfully.");await loadAll();
+  var wasEditing=tab==="orders"&&!!editingOrderId;editingOrderId=null;editingOrder=null;
+  msg(wasEditing?"Order updated successfully.":"Saved successfully.");await loadAll();
  }catch(e){msg("Could not save: "+(e&&e.message||String(e)));console.error(e)}
 }
 function line(a){return a.filter(function(x){return x!==""&&x!=null}).map(esc).join(" · ")}
@@ -185,7 +198,7 @@ function list(){
  items.forEach(function(r){
   if(tab==="orders"){
    var beans=(r.beansLines||[]).map(function(b){var rr=state.roasts.find(function(x){return String(x.id)===String(b.roastId)});return [b.bean,b.packaging,b.quantity+" unit(s)",rr&&rr.date].filter(Boolean).join(" · ")}).map(esc).join("<br>");
-   h+='<div class="card"><div class="row"><div><div class="t">'+esc(r.customer||"Customer")+'</div><div class="m">'+line([r.channel,r.orderDate,r.ref?"#"+r.ref:""])+'</div></div><button class="pill" data-a="next" data-id="'+r.id+'">'+esc(r.status||"New")+' ›</button></div><div class="m">'+beans+'</div>'+(r.courier||r.tracking||r.shipName||r.shipAddress?'<div class="m">'+line([r.courier,r.tracking,r.shipName,r.shipPhone,r.shipAddress])+'</div>':'')+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
+   h+='<div class="card"><div class="row"><div><div class="t">'+esc(r.customer||"Customer")+(r.ref?' <span class="m">#'+esc(r.ref)+'</span>':"")+'</div><div class="m">'+line([r.channel,"Order: "+(r.orderDate||"—")])+'</div></div><button class="pill" data-a="next" data-id="'+r.id+'">'+esc(r.status||"New")+' ›</button></div><div class="m">'+line(["Roasting: "+(r.roastingDate||"—"),"Completed: "+(r.completedDate||"—")])+'</div><div class="m">'+beans+'</div>'+(r.courier||r.tracking||r.shipName||r.shipAddress?'<div class="m">'+line([r.courier,r.tracking,r.shipName,r.shipPhone,r.shipAddress])+'</div>':'')+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="pill" data-a="edit" data-id="'+r.id+'">View / Edit order</button> <button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
   }else if(tab==="roasts"){
    var loss=r.inKg>0&&r.outKg>0?((r.inKg-r.outKg)/r.inKg*100).toFixed(1)+"% loss":"";
    h+='<div class="card"><div class="t">'+esc(r.coffee||"Roast")+'</div><div class="m">'+line([r.date,r.roaster,r.inKg+" → "+r.outKg+" kg",loss,"Batch: "+r.id])+'</div>'+(r.notes?'<div class="m">'+esc(r.notes)+'</div>':'')+'<button class="x" data-a="del" data-id="'+r.id+'">Delete</button></div>';
@@ -198,7 +211,8 @@ function list(){
  var L=document.getElementById("list");L.innerHTML=h;
  L.querySelectorAll("button[data-a]").forEach(function(b){b.onclick=async function(){
   var a=b.dataset.a,id=b.dataset.id,cur=items.find(function(x){return String(x.id)===String(id)});
-  if(a==="del"){
+  if(a==="edit"&&cur){editingOrderId=String(cur.id);editingOrder=Object.assign({},cur);tab="orders";nav();form();list();document.getElementById("form").scrollIntoView({behavior:"smooth",block:"start"});msg("Editing order #"+cur.id+". Update the fields and save.");
+  }else if(a==="del"){
    if(!confirm("Delete this entry?"))return;
    try{var del=await db.from(TABS[tab].table).delete().eq("id",Number(id));if(del.error)throw del.error;await loadAll();msg("Entry deleted.")}catch(e){msg("Delete failed: "+e.message)}
   }else if(a==="next"&&cur){
